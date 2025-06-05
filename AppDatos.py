@@ -6,11 +6,22 @@ from io import BytesIO
 from datetime import datetime
 
 st.set_page_config(page_title="Clasificador de Piezas", layout="wide")
-
 st.title("🔩 Clasificación de Piezas por Longitud")
 
 # === SUBIR ARCHIVO ===
 archivo_cargado = st.file_uploader("Sube el archivo 'Datos.xlsx'", type=["xlsx"])
+
+# === FUNCIÓN AUXILIAR PARA NOMBRES DE HOJA ===
+def get_unique_sheet_name(base_name, used_names):
+    base = str(base_name)[:31] if base_name else "Hoja"
+    name = base
+    count = 1
+    while name in used_names:
+        suffix = f"_{count}"
+        name = (base[:31 - len(suffix)] + suffix)
+        count += 1
+    used_names.add(name)
+    return name
 
 if archivo_cargado:
     df = pd.read_excel(archivo_cargado)
@@ -40,23 +51,28 @@ if archivo_cargado:
     # === CREACIÓN DE ARCHIVOS ===
     def crear_archivos():
         output_files = {}
+        used_names_estandar = set()
+        used_names_sobrantes = set()
 
         # piezas_estandar.xlsx
         wb_estandar = Workbook()
         ws_general = wb_estandar.active
         ws_general.title = "Resumen General"
+        used_names_estandar.add(ws_general.title)
         ws_general.append(['Size', 'Length (m)', 'Total Piezas'])
         for _, row in res.iterrows():
             ws_general.append(row.tolist())
 
         ws_id = wb_estandar.create_sheet("Resumen por ID")
+        used_names_estandar.add(ws_id.title)
         ws_id.append(['Size', 'ID', 'Length (m)', 'Frecuencia'])
         res_id = df_estandar.groupby(['Size', 'ID', 'Length (m)']).size().reset_index(name='Frecuencia')
         for _, row in res_id.iterrows():
             ws_id.append(row.tolist())
 
         for size, group in grouped_estandar.items():
-            ws = wb_estandar.create_sheet(title=size)
+            title = get_unique_sheet_name(size, used_names_estandar)
+            ws = wb_estandar.create_sheet(title=title)
             ws.append(['OBRA', 'ID', 'Length (m)'])
             for _, row in group.iterrows():
                 ws.append([row['OBRA'], row['ID'], row['Length (m)']])
@@ -69,23 +85,27 @@ if archivo_cargado:
         wb_sobrantes = Workbook()
         ws_resumen_general = wb_sobrantes.active
         ws_resumen_general.title = "Resumen size"
+        used_names_sobrantes.add(ws_resumen_general.title)
         ws_resumen_general.append(["Size", "Total piezas", "Piezas <= 12m", "Piezas > 12m"])
         for _, row in df_resumen_size.iterrows():
             ws_resumen_general.append(row.tolist())
 
         ws_id_sob = wb_sobrantes.create_sheet("Resumen por ID")
+        used_names_sobrantes.add(ws_id_sob.title)
         ws_id_sob.append(['Size', 'ID', 'Length (m)', 'Frecuencia'])
         res_id_sob = df_sobrantes.groupby(['Size', 'ID', 'Length (m)']).size().reset_index(name='Frecuencia')
         for _, row in res_id_sob.iterrows():
             ws_id_sob.append(row.tolist())
 
         ws_mayores = wb_sobrantes.create_sheet("Mayores a 12m")
+        used_names_sobrantes.add(ws_mayores.title)
         ws_mayores.append(['OBRA', 'ID', 'Size', 'Length (m)', 'Comentario'])
         for _, row in df_mayores_12.iterrows():
             ws_mayores.append([row['OBRA'], row['ID'], row['Size'], row['Length (m)'], 'No optimizable'])
 
         for size, group in grouped_sobrantes.items():
-            ws = wb_sobrantes.create_sheet(title=size)
+            title = get_unique_sheet_name(size, used_names_sobrantes)
+            ws = wb_sobrantes.create_sheet(title=title)
             ws.append(['OBRA', 'ID', 'Length (m)'])
             for _, row in group.iterrows():
                 ws.append([row['OBRA'], row['ID'], row['Length (m)']])
@@ -100,7 +120,8 @@ if archivo_cargado:
         with pd.ExcelWriter(buffer3, engine="openpyxl") as writer:
             df.to_excel(writer, sheet_name="Datos Originales", index=False)
             wb = writer.book
-            ws = wb.create_sheet("Resumen Estandar y Sobrante")
+            title_final = get_unique_sheet_name("Resumen Estandar y Sobrante", set(wb.sheetnames))
+            ws = wb.create_sheet(title=title_final)
             ws.append(["Estandar"])
             ws.append(["Size", "Total pieza"])
             for _, row in res_est.iterrows():
